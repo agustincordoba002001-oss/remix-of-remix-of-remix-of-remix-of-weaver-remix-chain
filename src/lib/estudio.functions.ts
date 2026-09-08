@@ -2,14 +2,29 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { escribirGuion } from "./narrador";
+import { AJUSTES_BASE } from "./ajustes";
 import { wikipedia } from "./hechos";
 
 const ENDPOINT = "https://hircoir-piper-tts-spanish.hf.space/convert";
 const MODELO = "models/es_MX-dark.onnx";
 
+const ajustesSchema = z
+  .object({
+    drama: z.number().min(-2).max(3).default(1),
+    preguntas: z.number().min(0).max(3).default(1),
+    datos: z.number().min(-2).max(3).default(1),
+    frasesCortas: z.number().min(-1).max(2).default(1),
+    minutosExtra: z.number().min(-10).max(20).default(0),
+    evitar: z.array(z.string().max(60)).max(40).default([]),
+    priorizar: z.array(z.string().max(60)).max(40).default([]),
+    notas: z.array(z.string().max(400)).max(40).default([]),
+  })
+  .default(AJUSTES_BASE);
+
 const temaSchema = z.object({
   tema: z.string().min(2).max(120),
   minutos: z.number().min(3).max(40).default(15),
+  ajustes: ajustesSchema,
 });
 
 export const generarGuion = createServerFn({ method: "POST" })
@@ -26,7 +41,7 @@ export const generarGuion = createServerFn({ method: "POST" })
 
     // El guion lo escribe el narrador propio del proyecto: sin IA de pago,
     // sin tokens y sin consumir créditos nunca.
-    return escribirGuion(titulo, hechos, data.minutos);
+    return escribirGuion(titulo, hechos, data.minutos, data.ajustes);
   });
 
 
