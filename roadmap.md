@@ -23,4 +23,6 @@
 ## Estudio en la app (listo)
 - [x] Página /estudio: tema -> guion gratis (enciclopedia libre) y narración voz Dark gratis
 - [x] Subir audio o video de cualquier tamaño para revisarlo y anotar correcciones
+- [x] Verificado: guion y audio consumen 0 créditos (Wikipedia + Piper gratuito), sin pedir tokens
+- [x] Guion más narrativo: multi-artículo, filtrado de fichas, conectores retóricos y ritmo dramático
 - [ ] Botón para animar el guion aprobado
