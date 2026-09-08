@@ -24,6 +24,7 @@ import {
   type Ajustes,
 } from "@/lib/ajustes";
 import { animarVideo, type EscenaVideo } from "@/lib/animador";
+import type { Referencia } from "@/lib/referencias";
 
 export const Route = createFileRoute("/estudio")({
   head: () => ({
@@ -110,7 +111,8 @@ function Estudio() {
   const [video, setVideo] = useState<string | null>(null);
   const [ajustes, setAjustes] = useState<Ajustes>(AJUSTES_BASE);
   const [mejora, setMejora] = useState("");
-  const [subido, setSubido] = useState<{ url: string; tipo: string; nombre: string } | null>(null);
+  const [refs, setRefs] = useState<Referencia[]>([]);
+  const [subiendo, setSubiendo] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const lienzo = useRef<HTMLCanvasElement | null>(null);
 
@@ -118,6 +120,10 @@ function Estudio() {
   const pedirVoz = useServerFn(generarVoz);
 
   useEffect(() => setAjustes(cargarAjustes()), []);
+  useEffect(() => {
+    void cargarRefs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function enseniar() {
     if (!mejora.trim()) return;
@@ -195,9 +201,51 @@ function Estudio() {
     }
   }
 
-  function subir(f: File | undefined) {
+  async function cargarRefs() {
+    try {
+      const r = await fetch("/api/public/referencias");
+      if (r.ok) setRefs((await r.json()) as Referencia[]);
+    } catch {
+      /* sin conexión: no pasa nada */
+    }
+  }
+
+  async function subir(f: File | undefined) {
     if (!f) return;
-    setSubido({ url: URL.createObjectURL(f), tipo: f.type, nombre: f.name });
+    setSubiendo(true);
+    try {
+      const r = await fetch("/api/public/referencias", {
+        method: "POST",
+        headers: { "x-nombre": f.name, "x-tipo": f.type || "application/octet-stream" },
+        body: f,
+      });
+      if (!r.ok) throw new Error("No se pudo guardar el archivo");
+      await cargarRefs();
+      toast.success("Archivo guardado en el proyecto");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No pude subir el archivo");
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  async function actualizar(id: string, cambio: Partial<Referencia>) {
+    setRefs((prev) => prev.map((r) => (r.id === id ? { ...r, ...cambio } : r)));
+    await fetch("/api/public/referencias", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, ...cambio }),
+    });
+    if (cambio.permanente) toast.success("Estilo guardado para siempre en el proyecto");
+  }
+
+  async function borrar(id: string) {
+    setRefs((prev) => prev.filter((r) => r.id !== id));
+    await fetch("/api/public/referencias", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
   }
 
   return (
@@ -387,10 +435,11 @@ function Estudio() {
           </Card>
 
           <Card className="border-border/70 bg-card/70 p-5">
-            <h2 className="text-lg font-semibold">4 · Revisar un audio o un video</h2>
+            <h2 className="text-lg font-semibold">4 · Material de referencia</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Subí el archivo que quieras revisar. Se abre acá mismo, sin límite de tamaño y sin
-              subirlo a ningún lado.
+              Subí un video o un audio, de cualquier peso. Queda guardado en el proyecto: con
+              la opción activada lo puedo abrir y estudiar sin que lo mandes por mensaje, y si
+              marcás “Guardar este estilo para siempre” ese estilo queda fijo en el proyecto.
             </p>
             <input
               ref={inputRef}
@@ -399,30 +448,68 @@ function Estudio() {
               className="hidden"
               onChange={(e) => subir(e.target.files?.[0])}
             />
-            <Button className="mt-4 h-11" onClick={() => inputRef.current?.click()}>
-              <Upload className="mr-2 h-4 w-4" /> Elegir archivo
+            <Button className="mt-4 h-11" onClick={() => inputRef.current?.click()} disabled={subiendo}>
+              {subiendo ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              {subiendo ? "Subiendo…" : "Subir archivo"}
             </Button>
 
-            {subido && (
-              <div className="mt-4 space-y-3">
-                <p className="text-sm text-muted-foreground">{subido.nombre}</p>
-                {subido.tipo.startsWith("video") ? (
-                  <video
-                    src={subido.url}
-                    controls
-                    playsInline
-                    className="w-full rounded-lg border border-border/70 bg-black"
+            <div className="mt-5 space-y-5">
+              {refs.length === 0 && !subiendo && (
+                <p className="text-sm text-muted-foreground">Todavía no subiste nada.</p>
+              )}
+              {refs.map((r) => (
+                <div key={r.id} className="rounded-lg border border-border/70 p-3">
+                  <p className="text-sm font-medium">{r.nombre}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(r.bytes / 1048576).toFixed(1)} MB
+                  </p>
+                  {r.tipo.startsWith("audio") ? (
+                    <audio src={`/api/public/referencias/${r.id}`} controls className="mt-3 w-full" />
+                  ) : (
+                    <video
+                      src={`/api/public/referencias/${r.id}`}
+                      controls
+                      playsInline
+                      className="mt-3 w-full rounded-lg border border-border/70 bg-black"
+                    />
+                  )}
+                  <label className="mt-3 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={r.activo}
+                      onChange={(e) => actualizar(r.id, { activo: e.target.checked })}
+                    />
+                    Activar para que lo vea y trabaje con él
+                  </label>
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={r.permanente}
+                      onChange={(e) => actualizar(r.id, { permanente: e.target.checked })}
+                    />
+                    Guardar este estilo para siempre en el proyecto
+                  </label>
+                  <textarea
+                    rows={3}
+                    defaultValue={r.notas}
+                    onBlur={(e) => actualizar(r.id, { notas: e.target.value })}
+                    placeholder="Qué querés de este material: el estilo de dibujo, el ritmo, la forma de contar…"
+                    className="mt-3 w-full rounded-md border border-border/70 bg-background/60 p-3 text-sm"
                   />
-                ) : (
-                  <audio src={subido.url} controls className="w-full" />
-                )}
-                <textarea
-                  rows={4}
-                  placeholder="Anotá qué hay que corregir de este video o audio…"
-                  className="w-full rounded-md border border-border/70 bg-background/60 p-3 text-sm"
-                />
-              </div>
-            )}
+                  <Button
+                    variant="ghost"
+                    className="mt-2 h-9 text-sm"
+                    onClick={() => borrar(r.id)}
+                  >
+                    Quitar
+                  </Button>
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
       </section>
