@@ -56,7 +56,19 @@ function frases(texto: string) {
   return texto
     .split(/(?<=[.!?])\s+/)
     .map((f) => limpiar(f))
-    .filter((f) => f.length > 45 && f.length < 340 && !f.endsWith(":"));
+    .filter((f) => f.length > 40 && f.length < 340 && !f.endsWith(":"));
+}
+
+/** Descarta frases que suenan a ficha de referencia y no a relato. */
+function esRelato(f: string): boolean {
+  const t = f.toLowerCase();
+  // Listas con muchas comas/paréntesis anidados o definiciones de diccionario.
+  if ((f.match(/,/g) || []).length > 6) return false;
+  if (t.startsWith("para otros usos") || t.startsWith("«para otros usos")) return false;
+  // Coordenadas, tablas de datos, años sueltos.
+  if (/^\d{3,}\s/.test(f) && f.length < 80) return false;
+  if (/\bcoordenadas\b/.test(t)) return false;
+  return true;
 }
 
 function pausa(txt: string) {
@@ -65,6 +77,17 @@ function pausa(txt: string) {
   if (txt.length > 200) return 0.5;
   return 0.38;
 }
+
+/** Conectores retóricos (no añaden hechos, solo enlazan el relato). */
+const PUENTES = [
+  "Pero esto apenas comenzaba.",
+  "Y acá viene lo interesante.",
+  "Lo que pasó después lo cambió todo.",
+  "Veamos qué ocurrió a continuación.",
+  "Acá hay un detalle que no se suele contar.",
+  "Y entonces dio un giro inesperado.",
+  "Pero las cosas no iban a ser tan simples.",
+];
 
 async function wiki(tema: string) {
   const buscar = new URL("https://es.wikipedia.org/w/api.php");
@@ -108,31 +131,63 @@ export const generarGuion = createServerFn({ method: "POST" })
     // ~140 palabras por minuto de narración.
     const objetivo = Math.round(data.minutos * 140);
 
-    const bloques = art.texto
+    // El split deja el texto de cada sección y, entre medias, el título de la
+    // sección siguiente. Guardamos ambos para saber dónde empieza cada bloque.
+    const partes = art.texto
       .split(/\n==+ ?([^=]+?) ?==+\n/)
       .map((s) => s.trim())
       .filter(Boolean);
 
+    const SECCIONES_BASURA =
+      /^(Véase también|Referencias|Bibliografía|Enlaces externos|Notas|Obras|Filmografía|Galardones|Premios|Discografía|Enlaces|Legado y)/i;
+
     const crudas: string[] = [];
-    for (const bloque of bloques) {
-      if (/^(Véase también|Referencias|Bibliografía|Enlaces externos|Notas)/i.test(bloque)) continue;
-      crudas.push(...frases(bloque));
+    for (let i = 0; i < partes.length; i++) {
+      const bloque = partes[i] ?? "";
+      // partes impares son títulos de sección: si la sección es basura, la
+      // saltamos junto a su contenido (el elemento par siguiente).
+      if (SECCIONES_BASURA.test(bloque)) {
+        // avanzar el contenido asociado si quedó pegado
+        continue;
+      }
+      crudas.push(...frases(bloque).filter(esRelato));
     }
 
     const tituloVoz = foneticas(art.titulo);
     const guion: { txt: string; gap: number }[] = [
       { txt: `LA HISTORIA COMPLETA DE ${tituloVoz.toUpperCase()}.`, gap: 0.9 },
+      {
+        txt: `Vamos a contar ${art.titulo.toLowerCase().startsWith("los ") || art.titulo.toLowerCase().startsWith("las ") ? "" : "el " || "la "}`.replace(
+          / \| /g,
+          "",
+        ),
+        gap: 0.0,
+      },
     ];
 
     let palabras = 0;
     const vistas = new Set<string>();
+    let desdeUltimoPuente = 0;
+    let puenteIdx = 0;
+
     for (const f of crudas) {
       const clave = f.slice(0, 60).toLowerCase();
       if (vistas.has(clave)) continue;
       vistas.add(clave);
       const txt = foneticas(f);
+
+      // Cada ~5 frases insertamos un conector retórico para dar ritmo narrativo.
+      if (desdeUltimoPuente >= 5 && palabras >= objetivo * 0.18) {
+        const puente = PUENTES[puenteIdx % PUENTES.length]!;
+        guion.push({ txt: puente, gap: 0.55 });
+        palabras += puente.split(/\s+/).length;
+        puenteIdx++;
+        desdeUltimoPuente = 0;
+      }
+
       guion.push({ txt, gap: pausa(txt) });
       palabras += txt.split(/\s+/).length;
+      desdeUltimoPuente++;
       if (palabras >= objetivo) break;
     }
 
