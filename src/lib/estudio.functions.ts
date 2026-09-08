@@ -20,7 +20,9 @@ export const generarGuion = createServerFn({ method: "POST" })
     const hechos = candidatos.flatMap((c, i) =>
       i === 0 ? c.relato : c.relato.slice(0, 40),
     );
-    const titulo = candidatos[0]?.titulo ?? data.tema;
+    // La intro nombra el tema tal como lo pidió el usuario.
+    const titulo = data.tema.trim();
+
 
     // El guion lo escribe el narrador propio del proyecto: sin IA de pago,
     // sin tokens y sin consumir créditos nunca.
