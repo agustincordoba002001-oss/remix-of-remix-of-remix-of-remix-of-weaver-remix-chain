@@ -244,6 +244,7 @@ export function escribirGuion(
   for (const h of hechos) {
     const f = limpiar(h);
     if (f.length < 45 || f.length > 340) continue;
+    if (f.includes("==")) continue;
     const clave = f.slice(0, 55).toLowerCase();
     if (vistas.has(clave)) continue;
     if (META.test(f)) continue;
@@ -252,7 +253,17 @@ export function escribirGuion(
   }
 
   // --- gancho: los 3 hechos más impactantes van al principio -------
-  const porFuerza = [...unicos].sort((a, b) => fuerza(b) - fuerza(a));
+  // El gancho pide lo mismo que en el Titanic: un dato con peso humano y
+  // un número concreto, dicho corto.
+  const candidatos = unicos.filter(
+    (f) =>
+      f.length < 210 &&
+      NUMEROSA.test(f) &&
+      DRAMATICAS.some((k) => f.toLowerCase().includes(k)),
+  );
+  const porFuerza = (candidatos.length >= 3 ? candidatos : unicos)
+    .slice()
+    .sort((a, b) => fuerza(b) - fuerza(a));
   const gancho = porFuerza.slice(0, 3);
   const cuerpo = cronologia(unicos.filter((f) => !gancho.includes(f)));
 
