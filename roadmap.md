@@ -26,4 +26,6 @@
 - [x] Verificado: guion y audio consumen 0 créditos (Wikipedia + Piper gratuito), sin pedir tokens
 - [x] Guion más narrativo: multi-artículo, filtrado de fichas, conectores retóricos y ritmo dramático
 - [x] Narrador propio (src/lib/narrador.ts): escribe los guiones con las reglas del Titanic, gratis y sin créditos
-- [ ] Botón para animar el guion aprobado
+- [x] Botón para animar el guion aprobado (motor propio en el navegador, gratis)
+- [x] Narrador v2: sin ideas repetidas, cronología con contexto y conectores sin repetir
+- [x] Panel "Enseñarle a mejorar": el usuario escribe una indicación y el narrador la aplica siempre
