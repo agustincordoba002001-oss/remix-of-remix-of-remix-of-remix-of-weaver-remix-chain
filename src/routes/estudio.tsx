@@ -120,6 +120,10 @@ function Estudio() {
   const pedirVoz = useServerFn(generarVoz);
 
   useEffect(() => setAjustes(cargarAjustes()), []);
+  useEffect(() => {
+    void cargarRefs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function enseniar() {
     if (!mejora.trim()) return;
