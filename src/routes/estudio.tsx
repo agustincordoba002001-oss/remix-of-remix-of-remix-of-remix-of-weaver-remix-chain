@@ -387,10 +387,11 @@ function Estudio() {
           </Card>
 
           <Card className="border-border/70 bg-card/70 p-5">
-            <h2 className="text-lg font-semibold">4 · Revisar un audio o un video</h2>
+            <h2 className="text-lg font-semibold">4 · Material de referencia</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Subí el archivo que quieras revisar. Se abre acá mismo, sin límite de tamaño y sin
-              subirlo a ningún lado.
+              Subí un video o un audio, de cualquier peso. Queda guardado en el proyecto: con
+              la opción activada lo puedo abrir y estudiar sin que lo mandes por mensaje, y si
+              marcás “Guardar este estilo para siempre” ese estilo queda fijo en el proyecto.
             </p>
             <input
               ref={inputRef}
@@ -399,30 +400,68 @@ function Estudio() {
               className="hidden"
               onChange={(e) => subir(e.target.files?.[0])}
             />
-            <Button className="mt-4 h-11" onClick={() => inputRef.current?.click()}>
-              <Upload className="mr-2 h-4 w-4" /> Elegir archivo
+            <Button className="mt-4 h-11" onClick={() => inputRef.current?.click()} disabled={subiendo}>
+              {subiendo ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              {subiendo ? "Subiendo…" : "Subir archivo"}
             </Button>
 
-            {subido && (
-              <div className="mt-4 space-y-3">
-                <p className="text-sm text-muted-foreground">{subido.nombre}</p>
-                {subido.tipo.startsWith("video") ? (
-                  <video
-                    src={subido.url}
-                    controls
-                    playsInline
-                    className="w-full rounded-lg border border-border/70 bg-black"
+            <div className="mt-5 space-y-5">
+              {refs.length === 0 && !subiendo && (
+                <p className="text-sm text-muted-foreground">Todavía no subiste nada.</p>
+              )}
+              {refs.map((r) => (
+                <div key={r.id} className="rounded-lg border border-border/70 p-3">
+                  <p className="text-sm font-medium">{r.nombre}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(r.bytes / 1048576).toFixed(1)} MB
+                  </p>
+                  {r.tipo.startsWith("audio") ? (
+                    <audio src={`/api/public/referencias/${r.id}`} controls className="mt-3 w-full" />
+                  ) : (
+                    <video
+                      src={`/api/public/referencias/${r.id}`}
+                      controls
+                      playsInline
+                      className="mt-3 w-full rounded-lg border border-border/70 bg-black"
+                    />
+                  )}
+                  <label className="mt-3 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={r.activo}
+                      onChange={(e) => actualizar(r.id, { activo: e.target.checked })}
+                    />
+                    Activar para que lo vea y trabaje con él
+                  </label>
+                  <label className="mt-2 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={r.permanente}
+                      onChange={(e) => actualizar(r.id, { permanente: e.target.checked })}
+                    />
+                    Guardar este estilo para siempre en el proyecto
+                  </label>
+                  <textarea
+                    rows={3}
+                    defaultValue={r.notas}
+                    onBlur={(e) => actualizar(r.id, { notas: e.target.value })}
+                    placeholder="Qué querés de este material: el estilo de dibujo, el ritmo, la forma de contar…"
+                    className="mt-3 w-full rounded-md border border-border/70 bg-background/60 p-3 text-sm"
                   />
-                ) : (
-                  <audio src={subido.url} controls className="w-full" />
-                )}
-                <textarea
-                  rows={4}
-                  placeholder="Anotá qué hay que corregir de este video o audio…"
-                  className="w-full rounded-md border border-border/70 bg-background/60 p-3 text-sm"
-                />
-              </div>
-            )}
+                  <Button
+                    variant="ghost"
+                    className="mt-2 h-9 text-sm"
+                    onClick={() => borrar(r.id)}
+                  >
+                    Quitar
+                  </Button>
+                </div>
+              ))}
+            </div>
           </Card>
         </div>
       </section>
