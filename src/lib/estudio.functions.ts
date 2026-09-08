@@ -56,7 +56,17 @@ function frases(texto: string) {
   return texto
     .split(/(?<=[.!?])\s+/)
     .map((f) => limpiar(f))
-    .filter((f) => f.length > 45 && f.length < 340 && !f.endsWith(":"));
+    .filter((f) => f.length > 40 && f.length < 340 && !f.endsWith(":"));
+}
+
+/** Descarta frases que suenan a ficha de referencia y no a relato. */
+function esRelato(f: string): boolean {
+  const t = f.toLowerCase();
+  if ((f.match(/,/g) || []).length > 6) return false;
+  if (t.startsWith("para otros usos") || t.startsWith("«para otros usos")) return false;
+  if (/^\d{3,}\s/.test(f) && f.length < 80) return false;
+  if (/\bcoordenadas\b/.test(t)) return false;
+  return true;
 }
 
 function pausa(txt: string) {
@@ -66,33 +76,83 @@ function pausa(txt: string) {
   return 0.38;
 }
 
-async function wiki(tema: string) {
+const SECCIONES_BASURA =
+  /^(Véase también|Referencias|Bibliografía|Enlaces externos|Notas|Obras|Filmografía|Galardones|Premios|Discografía|Enlaces|Legado y)/i;
+
+/** Extrae las frases de relato de un texto Wikipedia, saltando secciones inútiles. */
+function extraerRelato(texto: string): string[] {
+  const partes = texto
+    .split(/\n==+ ?([^=]+?) ?==+\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  for (let i = 0; i < partes.length; i++) {
+    const bloque = partes[i] ?? "";
+    if (SECCIONES_BASURA.test(bloque)) continue;
+    out.push(...frases(bloque).filter(esRelato));
+  }
+  return out;
+}
+
+/** Descarta artículos que no son relato (desambiguaciones, fichas de películas). */
+function esArticuloValido(extract: string): boolean {
+  if (!extract) return false;
+  const t = extract.toLowerCase();
+  if (/puede referirse a|desambiguación|hace referencia a/.test(t)) return false;
+  return extract.split(/\s+/).length > 120;
+}
+
+/**
+ * Busca varios artículos relacionados en Wikipedia y devuelve sus extractos,
+ * ordenados por cantidad de relato útil. Así el guion es más completo y se
+ * elige bien el tema correcto aunque el nombre sea ambiguo. Todo gratis.
+ */
+async function wikipedia(tema: string) {
   const buscar = new URL("https://es.wikipedia.org/w/api.php");
   buscar.searchParams.set("action", "query");
   buscar.searchParams.set("list", "search");
   buscar.searchParams.set("srsearch", tema);
-  buscar.searchParams.set("srlimit", "1");
+  buscar.searchParams.set("srlimit", "6");
   buscar.searchParams.set("format", "json");
   buscar.searchParams.set("origin", "*");
   const b = (await (await fetch(buscar)).json()) as {
     query?: { search?: { title?: string }[] };
   };
-  const titulo = b.query?.search?.[0]?.title;
-  if (!titulo) return null;
+  const titulos = (b.query?.search ?? [])
+    .map((s) => s.title)
+    .filter((t): t is string => Boolean(t));
+
+  if (!titulos.length) return [];
 
   const art = new URL("https://es.wikipedia.org/w/api.php");
   art.searchParams.set("action", "query");
   art.searchParams.set("prop", "extracts");
   art.searchParams.set("explaintext", "1");
   art.searchParams.set("redirects", "1");
-  art.searchParams.set("titles", titulo);
+  art.searchParams.set("titles", titulos.join("|"));
   art.searchParams.set("format", "json");
   const a = (await (await fetch(art)).json()) as {
-    query?: { pages?: Record<string, { extract?: string }> };
+    query?: { pages?: Record<string, { title?: string; extract?: string }> };
   };
-  const pagina = Object.values(a.query?.pages ?? {})[0];
-  return pagina?.extract ? { titulo, texto: pagina.extract } : null;
+  const paginas = Object.values(a.query?.pages ?? {});
+
+  return paginas
+    .filter((p) => p.title && p.extract && esArticuloValido(p.extract))
+    .map((p) => ({ titulo: p.title!, texto: p.extract!, relato: extraerRelato(p.extract!) }))
+    .filter((c) => c.relato.length > 5)
+    .sort((x, y) => y.relato.length - x.relato.length);
 }
+
+/** Conectores retóricos (no añaden hechos, solo enlazan el relato). */
+const PUENTES = [
+  "Pero esto apenas comenzaba.",
+  "Y acá viene lo interesante.",
+  "Lo que pasó después lo cambió todo.",
+  "Veamos qué ocurrió a continuación.",
+  "Acá hay un detalle que no se suele contar.",
+  "Y entonces dio un giro inesperado.",
+  "Pero las cosas no iban a ser tan simples.",
+];
 
 const temaSchema = z.object({
   tema: z.string().min(2).max(120),
@@ -102,37 +162,49 @@ const temaSchema = z.object({
 export const generarGuion = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => temaSchema.parse(d))
   .handler(async ({ data }) => {
-    const art = await wiki(data.tema);
-    if (!art) throw new Error("No encontré información sobre ese tema.");
+    const candidatos = await wikipedia(data.tema);
+    if (!candidatos.length) throw new Error("No encontré información sobre ese tema.");
+
+    const principal = candidatos[0]!;
 
     // ~140 palabras por minuto de narración.
     const objetivo = Math.round(data.minutos * 140);
 
-    const bloques = art.texto
-      .split(/\n==+ ?([^=]+?) ?==+\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const crudas: string[] = [];
-    for (const bloque of bloques) {
-      if (/^(Véase también|Referencias|Bibliografía|Enlaces externos|Notas)/i.test(bloque)) continue;
-      crudas.push(...frases(bloque));
+    // Juntamos el relato del artículo principal y, si hace falta más material
+    // para llegar a la duración pedida, de los artículos relacionados.
+    const fuente: string[] = [...principal.relato];
+    for (let i = 1; i < candidatos.length && fuente.length < objetivo / 4; i++) {
+      fuente.push(...candidatos[i]!.relato);
     }
 
-    const tituloVoz = foneticas(art.titulo);
+    const tituloVoz = foneticas(principal.titulo);
     const guion: { txt: string; gap: number }[] = [
       { txt: `LA HISTORIA COMPLETA DE ${tituloVoz.toUpperCase()}.`, gap: 0.9 },
     ];
 
     let palabras = 0;
     const vistas = new Set<string>();
-    for (const f of crudas) {
+    let desdeUltimoPuente = 0;
+    let puenteIdx = 0;
+
+    for (const f of fuente) {
       const clave = f.slice(0, 60).toLowerCase();
       if (vistas.has(clave)) continue;
       vistas.add(clave);
       const txt = foneticas(f);
+
+      // Cada ~5 frases insertamos un conector retórico para dar ritmo narrativo.
+      if (desdeUltimoPuente >= 5 && palabras >= objetivo * 0.18) {
+        const puente = PUENTES[puenteIdx % PUENTES.length]!;
+        guion.push({ txt: puente, gap: 0.55 });
+        palabras += puente.split(/\s+/).length;
+        puenteIdx++;
+        desdeUltimoPuente = 0;
+      }
+
       guion.push({ txt, gap: pausa(txt) });
       palabras += txt.split(/\s+/).length;
+      desdeUltimoPuente++;
       if (palabras >= objetivo) break;
     }
 
@@ -142,7 +214,7 @@ export const generarGuion = createServerFn({ method: "POST" })
     });
 
     return {
-      titulo: art.titulo,
+      titulo: principal.titulo,
       escenas: guion,
       palabras,
       minutos: Math.round((palabras / 140) * 10) / 10,
