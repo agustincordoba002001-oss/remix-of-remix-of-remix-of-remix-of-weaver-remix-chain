@@ -110,7 +110,8 @@ function Estudio() {
   const [video, setVideo] = useState<string | null>(null);
   const [ajustes, setAjustes] = useState<Ajustes>(AJUSTES_BASE);
   const [mejora, setMejora] = useState("");
-  const [subido, setSubido] = useState<{ url: string; tipo: string; nombre: string } | null>(null);
+  const [refs, setRefs] = useState<Referencia[]>([]);
+  const [subiendo, setSubiendo] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const lienzo = useRef<HTMLCanvasElement | null>(null);
 
