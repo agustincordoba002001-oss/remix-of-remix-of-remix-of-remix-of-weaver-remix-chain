@@ -19,3 +19,8 @@
 - [ ] Dibujos únicos: /mnt/documents/ref_gf/gNNN.png (faltan del g012 al g236)
 - [ ] Render por tramos con animacion-luna/build_guerrafria.py y concatenar a
       /mnt/documents/guerra_fria_completo.mp4
+
+## Estudio en la app (listo)
+- [x] Página /estudio: tema -> guion gratis (enciclopedia libre) y narración voz Dark gratis
+- [x] Subir audio o video de cualquier tamaño para revisarlo y anotar correcciones
+- [ ] Botón para animar el guion aprobado
