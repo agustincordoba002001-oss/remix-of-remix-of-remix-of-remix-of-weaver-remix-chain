@@ -24,6 +24,7 @@ import {
   type Ajustes,
 } from "@/lib/ajustes";
 import { animarVideo, type EscenaVideo } from "@/lib/animador";
+import type { Referencia } from "@/routes/api/public/referencias";
 
 export const Route = createFileRoute("/estudio")({
   head: () => ({
