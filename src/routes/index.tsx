@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Film, Loader2, Play, RotateCcw, Volume2 } from "lucide-react";
@@ -157,6 +157,11 @@ function EditorPage() {
           generá la voz, escuchala y aprobala. Cuando termines de aprobar, avisame en el
           chat y rearmo el video completo con esas correcciones.
         </p>
+        <Link to="/estudio" className="mt-5 inline-block">
+          <Button variant="secondary" className="h-11">
+            Ir al estudio: guion y voz nuevos
+          </Button>
+        </Link>
       </header>
 
       <section className="mx-auto grid max-w-6xl gap-6 px-6 pb-24 lg:grid-cols-[1.1fr_1fr]">
