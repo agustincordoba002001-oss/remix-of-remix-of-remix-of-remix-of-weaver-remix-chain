@@ -156,13 +156,6 @@ export const generarGuion = createServerFn({ method: "POST" })
     const tituloVoz = foneticas(art.titulo);
     const guion: { txt: string; gap: number }[] = [
       { txt: `LA HISTORIA COMPLETA DE ${tituloVoz.toUpperCase()}.`, gap: 0.9 },
-      {
-        txt: `Vamos a contar ${art.titulo.toLowerCase().startsWith("los ") || art.titulo.toLowerCase().startsWith("las ") ? "" : "el " || "la "}`.replace(
-          / \| /g,
-          "",
-        ),
-        gap: 0.0,
-      },
     ];
 
     let palabras = 0;
