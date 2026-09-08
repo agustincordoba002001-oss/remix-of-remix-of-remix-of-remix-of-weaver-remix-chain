@@ -75,7 +75,7 @@ const DRAMATICAS = [
   "catástrofe", "explosión", "ataque", "prohibido", "secreto", "último",
 ];
 
-const NUMEROSA = /\b(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?\s?(?:%|millones|mil|metros|kilómetros|toneladas|personas|años|horas|días))\b/i;
+const NUMEROSA = /\b\d{2,}(?:[.,]\d+)?\b|\b\d+\s?(?:%|millones|mil)\b/i;
 const ANIO = /\b(1[0-9]{3}|20[0-9]{2})\b/;
 
 /** Frases que hablan de películas, libros o cultura pop: no son el relato. */
@@ -257,7 +257,8 @@ export function escribirGuion(
   // un número concreto, dicho corto.
   const candidatos = unicos.filter(
     (f) =>
-      f.length < 210 &&
+      f.length < 230 &&
+      !META.test(f) &&
       NUMEROSA.test(f) &&
       /\b(muert|muri|víctim|tragedia|desastre|hundi|catástrofe|destruy|sobrevivi|superviv)/i.test(f) &&
       !/^(los|las|el|la)\s+\w+\s+se\s+consideran/i.test(f),
