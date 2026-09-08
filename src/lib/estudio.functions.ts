@@ -1,56 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { escribirGuion, limpiar } from "./narrador";
+
 const ENDPOINT = "https://hircoir-piper-tts-spanish.hf.space/convert";
 const MODELO = "models/es_MX-dark.onnx";
 
 /* ------------------------------------------------------------------ */
-/* Guion gratis: se arma con la enciclopedia libre, sin gastar créditos */
+/* Hechos gratis: enciclopedia libre (sin créditos, sin tokens)         */
 /* ------------------------------------------------------------------ */
-
-/** Palabras en inglés escritas como suenan, para que la voz las pronuncie bien. */
-const FONETICA: Record<string, string> = {
-  Titanic: "Taitánic",
-  Kennedy: "Quénedi",
-  Armstrong: "Ármstrong",
-  Washington: "Washintong",
-  Liverpool: "Líverpul",
-  Southampton: "Sáuthampton",
-  Belfast: "Bélfast",
-  Cherbourg: "Cherburgo",
-  Queenstown: "Quínstaun",
-  Carpathia: "Carpatia",
-  California: "Califórnia",
-  New: "Niu",
-  York: "York",
-  Hollywood: "Jólivud",
-  Chicago: "Chicágo",
-  Michigan: "Míchigan",
-  Boeing: "Bóing",
-  Apollo: "Apolo",
-};
-
-const DRAMATICAS = [
-  "muertos", "murieron", "miedo", "tragedia", "incendio", "hundió", "hundir",
-  "silencio", "nunca", "desastre", "guerra", "sangre", "final",
-];
-
-function foneticas(t: string) {
-  let out = t;
-  for (const [en, es] of Object.entries(FONETICA)) {
-    out = out.replace(new RegExp(`\\b${en}\\b`, "g"), es);
-  }
-  return out;
-}
-
-function limpiar(t: string) {
-  return t
-    .replace(/\([^)]*\)/g, "")
-    .replace(/\[[^\]]*\]/g, "")
-    .replace(/«|»|"|"|"/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function frases(texto: string) {
   return texto
@@ -63,38 +21,28 @@ function frases(texto: string) {
 function esRelato(f: string): boolean {
   const t = f.toLowerCase();
   if ((f.match(/,/g) || []).length > 6) return false;
-  if (t.startsWith("para otros usos") || t.startsWith("«para otros usos")) return false;
+  if (t.startsWith("para otros usos")) return false;
   if (/^\d{3,}\s/.test(f) && f.length < 80) return false;
   if (/\bcoordenadas\b/.test(t)) return false;
   return true;
 }
 
-function pausa(txt: string) {
-  const t = txt.toLowerCase();
-  if (DRAMATICAS.some((k) => t.includes(k))) return 0.75;
-  if (txt.length > 200) return 0.5;
-  return 0.38;
-}
-
 const SECCIONES_BASURA =
-  /^(Véase también|Referencias|Bibliografía|Enlaces externos|Notas|Obras|Filmografía|Galardones|Premios|Discografía|Enlaces|Legado y)/i;
+  /^(Véase también|Referencias|Bibliografía|Enlaces externos|Notas|Obras|Filmografía|Galardones|Premios|Discografía|Enlaces)/i;
 
-/** Extrae las frases de relato de un texto Wikipedia, saltando secciones inútiles. */
 function extraerRelato(texto: string): string[] {
   const partes = texto
     .split(/\n==+ ?([^=]+?) ?==+\n/)
     .map((s) => s.trim())
     .filter(Boolean);
   const out: string[] = [];
-  for (let i = 0; i < partes.length; i++) {
-    const bloque = partes[i] ?? "";
+  for (const bloque of partes) {
     if (SECCIONES_BASURA.test(bloque)) continue;
     out.push(...frases(bloque).filter(esRelato));
   }
   return out;
 }
 
-/** Descarta artículos que no son relato (desambiguaciones, fichas de películas). */
 function esArticuloValido(extract: string): boolean {
   if (!extract) return false;
   const t = extract.toLowerCase();
@@ -102,26 +50,19 @@ function esArticuloValido(extract: string): boolean {
   return extract.split(/\s+/).length > 120;
 }
 
-/**
- * Busca varios artículos relacionados en Wikipedia y devuelve sus extractos,
- * ordenados por cantidad de relato útil. Así el guion es más completo y se
- * elige bien el tema correcto aunque el nombre sea ambiguo. Todo gratis.
- */
 async function wikipedia(tema: string) {
   const buscar = new URL("https://es.wikipedia.org/w/api.php");
   buscar.searchParams.set("action", "query");
   buscar.searchParams.set("list", "search");
   buscar.searchParams.set("srsearch", tema);
-  buscar.searchParams.set("srlimit", "6");
+  buscar.searchParams.set("srlimit", "8");
   buscar.searchParams.set("format", "json");
-  buscar.searchParams.set("origin", "*");
   const b = (await (await fetch(buscar)).json()) as {
     query?: { search?: { title?: string }[] };
   };
   const titulos = (b.query?.search ?? [])
     .map((s) => s.title)
     .filter((t): t is string => Boolean(t));
-
   if (!titulos.length) return [];
 
   const art = new URL("https://es.wikipedia.org/w/api.php");
@@ -134,25 +75,13 @@ async function wikipedia(tema: string) {
   const a = (await (await fetch(art)).json()) as {
     query?: { pages?: Record<string, { title?: string; extract?: string }> };
   };
-  const paginas = Object.values(a.query?.pages ?? {});
 
-  return paginas
+  return Object.values(a.query?.pages ?? {})
     .filter((p) => p.title && p.extract && esArticuloValido(p.extract))
-    .map((p) => ({ titulo: p.title!, texto: p.extract!, relato: extraerRelato(p.extract!) }))
+    .map((p) => ({ titulo: p.title!, relato: extraerRelato(p.extract!) }))
     .filter((c) => c.relato.length > 5)
     .sort((x, y) => y.relato.length - x.relato.length);
 }
-
-/** Conectores retóricos (no añaden hechos, solo enlazan el relato). */
-const PUENTES = [
-  "Pero esto apenas comenzaba.",
-  "Y acá viene lo interesante.",
-  "Lo que pasó después lo cambió todo.",
-  "Veamos qué ocurrió a continuación.",
-  "Acá hay un detalle que no se suele contar.",
-  "Y entonces dio un giro inesperado.",
-  "Pero las cosas no iban a ser tan simples.",
-];
 
 const temaSchema = z.object({
   tema: z.string().min(2).max(120),
@@ -166,64 +95,21 @@ export const generarGuion = createServerFn({ method: "POST" })
     if (!candidatos.length) throw new Error("No encontré información sobre ese tema.");
 
     const principal = candidatos[0]!;
+    const hechos = candidatos.flatMap((c) => c.relato);
 
-    // ~140 palabras por minuto de narración.
-    const objetivo = Math.round(data.minutos * 140);
-
-    // Juntamos el relato del artículo principal y, si hace falta más material
-    // para llegar a la duración pedida, de los artículos relacionados.
-    const fuente: string[] = [...principal.relato];
-    for (let i = 1; i < candidatos.length && fuente.length < objetivo / 4; i++) {
-      fuente.push(...candidatos[i]!.relato);
-    }
-
-    const tituloVoz = foneticas(principal.titulo);
-    const guion: { txt: string; gap: number }[] = [
-      { txt: `LA HISTORIA COMPLETA DE ${tituloVoz.toUpperCase()}.`, gap: 0.9 },
-    ];
-
-    let palabras = 0;
-    const vistas = new Set<string>();
-    let desdeUltimoPuente = 0;
-    let puenteIdx = 0;
-
-    for (const f of fuente) {
-      const clave = f.slice(0, 60).toLowerCase();
-      if (vistas.has(clave)) continue;
-      vistas.add(clave);
-      const txt = foneticas(f);
-
-      // Cada ~5 frases insertamos un conector retórico para dar ritmo narrativo.
-      if (desdeUltimoPuente >= 5 && palabras >= objetivo * 0.18) {
-        const puente = PUENTES[puenteIdx % PUENTES.length]!;
-        guion.push({ txt: puente, gap: 0.55 });
-        palabras += puente.split(/\s+/).length;
-        puenteIdx++;
-        desdeUltimoPuente = 0;
-      }
-
-      guion.push({ txt, gap: pausa(txt) });
-      palabras += txt.split(/\s+/).length;
-      desdeUltimoPuente++;
-      if (palabras >= objetivo) break;
-    }
-
-    guion.push({
-      txt: "Y así termina esta historia. Gracias por acompañarme hasta el final.",
-      gap: 0.8,
-    });
-
-    return {
-      titulo: principal.titulo,
-      escenas: guion,
-      palabras,
-      minutos: Math.round((palabras / 140) * 10) / 10,
-    };
+    // El guion lo escribe el narrador propio del proyecto: sin IA de pago,
+    // sin tokens y sin consumir créditos nunca.
+    return escribirGuion(principal.titulo, hechos, data.minutos);
   });
 
 /* ------------------------------------------------------------------ */
 /* Voz gratis: mismo motor y calibración que los documentales          */
 /* ------------------------------------------------------------------ */
+
+const DRAMATICAS = [
+  "muertos", "murieron", "miedo", "tragedia", "incendio", "hundió",
+  "silencio", "nunca", "desastre", "guerra", "sangre", "final",
+];
 
 function ritmo(txt: string) {
   const t = txt.toLowerCase();

@@ -25,4 +25,5 @@
 - [x] Subir audio o video de cualquier tamaño para revisarlo y anotar correcciones
 - [x] Verificado: guion y audio consumen 0 créditos (Wikipedia + Piper gratuito), sin pedir tokens
 - [x] Guion más narrativo: multi-artículo, filtrado de fichas, conectores retóricos y ritmo dramático
+- [x] Narrador propio (src/lib/narrador.ts): escribe los guiones con las reglas del Titanic, gratis y sin créditos
 - [ ] Botón para animar el guion aprobado
