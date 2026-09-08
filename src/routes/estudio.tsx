@@ -195,9 +195,51 @@ function Estudio() {
     }
   }
 
-  function subir(f: File | undefined) {
+  async function cargarRefs() {
+    try {
+      const r = await fetch("/api/public/referencias");
+      if (r.ok) setRefs((await r.json()) as Referencia[]);
+    } catch {
+      /* sin conexión: no pasa nada */
+    }
+  }
+
+  async function subir(f: File | undefined) {
     if (!f) return;
-    setSubido({ url: URL.createObjectURL(f), tipo: f.type, nombre: f.name });
+    setSubiendo(true);
+    try {
+      const r = await fetch("/api/public/referencias", {
+        method: "POST",
+        headers: { "x-nombre": f.name, "x-tipo": f.type || "application/octet-stream" },
+        body: f,
+      });
+      if (!r.ok) throw new Error("No se pudo guardar el archivo");
+      await cargarRefs();
+      toast.success("Archivo guardado en el proyecto");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No pude subir el archivo");
+    } finally {
+      setSubiendo(false);
+    }
+  }
+
+  async function actualizar(id: string, cambio: Partial<Referencia>) {
+    setRefs((prev) => prev.map((r) => (r.id === id ? { ...r, ...cambio } : r)));
+    await fetch("/api/public/referencias", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, ...cambio }),
+    });
+    if (cambio.permanente) toast.success("Estilo guardado para siempre en el proyecto");
+  }
+
+  async function borrar(id: string) {
+    setRefs((prev) => prev.filter((r) => r.id !== id));
+    await fetch("/api/public/referencias", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
   }
 
   return (
