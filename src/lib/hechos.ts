@@ -43,7 +43,8 @@ function extraerRelato(texto: string): string[] {
 
 function esArticuloValido(extract: string, minPalabras: number): boolean {
   if (!extract) return false;
-  const t = extract.toLowerCase();
+  // Sólo la entrada del artículo delata una página de desambiguación.
+  const t = extract.slice(0, 300).toLowerCase();
   if (/puede referirse a|desambiguación|hace referencia a/.test(t)) return false;
   return extract.split(/\s+/).length > minPalabras;
 }
