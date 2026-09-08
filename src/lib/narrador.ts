@@ -78,6 +78,9 @@ const DRAMATICAS = [
 const NUMEROSA = /\b(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?\s?(?:%|millones|mil|metros|kilómetros|toneladas|personas|años|horas|días))\b/i;
 const ANIO = /\b(1[0-9]{3}|20[0-9]{2})\b/;
 
+/** Frases que hablan de películas, libros o cultura pop: no son el relato. */
+const META = /\b(pel[ií]cula|filme|film|serie|documental|novela|recaudaci[oó]n|taquilla|actor|actriz|videojuego|canci[oó]n|estreno|reestreno|adaptaci[oó]n)\b/i;
+
 const CAUSALES = /\b(porque|debido a|por eso|como consecuencia|provocó|permitió|obligó|impidió|gracias a|a raíz de)\b/i;
 
 /** Cuánto sirve una frase para el relato: más alto, más adelante en el guion. */
@@ -88,6 +91,7 @@ function fuerza(f: string) {
   if (NUMEROSA.test(f)) p += 2;
   if (CAUSALES.test(f)) p += 2;
   if (ANIO.test(f)) p += 1;
+  if (META.test(f)) p -= 8;
   if (f.length > 260) p -= 2;
   if ((f.match(/,/g) || []).length > 5) p -= 2;
   return p;
@@ -108,6 +112,8 @@ export function pausa(txt: string) {
 /** Quita el ruido de enciclopedia (paréntesis, comillas, referencias). */
 export function limpiar(t: string) {
   return t
+    .replace(/^=+[^=]*=+/g, "")
+    .replace(/[\u200b\u200e\u00ad]/g, "")
     .replace(/\([^)]*\)/g, "")
     .replace(/\[[^\]]*\]/g, "")
     .replace(/[«»""„"]/g, "")
@@ -197,6 +203,21 @@ export function cronologia(frases: string[]): string[] {
 /* 5. El guion completo                                                */
 /* ------------------------------------------------------------------ */
 
+/** Arma la intro fija respetando el artículo del tema (del / de la / de). */
+export function tituloIntro(tema: string) {
+  const t = tema.trim();
+  const m = /^(el|la|los|las)\s+(.+)$/i.exec(t);
+  if (m) {
+    const art = m[1]!.toLowerCase();
+    const resto = m[2]!.toUpperCase();
+    if (art === "el") return `LA HISTORIA COMPLETA DEL ${resto}.`;
+    if (art === "la") return `LA HISTORIA COMPLETA DE LA ${resto}.`;
+    if (art === "los") return `LA HISTORIA COMPLETA DE LOS ${resto}.`;
+    return `LA HISTORIA COMPLETA DE LAS ${resto}.`;
+  }
+  return `LA HISTORIA COMPLETA DE ${t.toUpperCase()}.`;
+}
+
 export type Guion = {
   titulo: string;
   escenas: Frase[];
@@ -215,6 +236,7 @@ export function escribirGuion(
 ): Guion {
   const objetivo = Math.round(minutos * 140);
   const temaVoz = foneticas(tema);
+  const intro = tituloIntro(temaVoz);
 
   // --- material ---------------------------------------------------
   const vistas = new Set<string>();
@@ -224,6 +246,7 @@ export function escribirGuion(
     if (f.length < 45 || f.length > 340) continue;
     const clave = f.slice(0, 55).toLowerCase();
     if (vistas.has(clave)) continue;
+    if (META.test(f)) continue;
     vistas.add(clave);
     unicos.push(f);
   }
@@ -244,7 +267,7 @@ export function escribirGuion(
   });
 
   // --- intro fija (regla del proyecto) -----------------------------
-  push(`LA HISTORIA COMPLETA DE ${temaVoz.toUpperCase()}.`, 0.95);
+  push(intro, 0.95);
   push(
     `Cómo empezó, qué pasó realmente y por qué todavía se sigue contando. De principio a fin.`,
     0.8,
