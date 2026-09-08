@@ -259,7 +259,8 @@ export function escribirGuion(
     (f) =>
       f.length < 210 &&
       NUMEROSA.test(f) &&
-      DRAMATICAS.some((k) => f.toLowerCase().includes(k)),
+      /\b(muert|muri|víctim|tragedia|desastre|hundi|catástrofe|destruy|sobrevivi|superviv)/i.test(f) &&
+      !/^(los|las|el|la)\s+\w+\s+se\s+consideran/i.test(f),
   );
   const porFuerza = (candidatos.length >= 3 ? candidatos : unicos)
     .slice()
