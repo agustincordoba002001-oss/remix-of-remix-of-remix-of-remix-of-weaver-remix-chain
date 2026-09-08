@@ -355,22 +355,30 @@ export function escribirGuion(
   const darCierre = repartidor(CIERRES_ACTO, semilla + 11);
 
   // --- material: limpio, sin repetidos y sin lo que el usuario descartó ---
-  const vistos: Set<string>[] = [];
-  const unicos: string[] = [];
-  for (const h of hechos) {
-    const f = limpiar(h);
-    if (f.length < 45 || f.length > 340) continue;
-    if (f.includes("==")) continue;
-    if (META.test(f) || RUIDO.test(f)) continue;
-    const bajo = f.toLowerCase();
-    if (aj.evitar.some((k) => k && bajo.includes(k.toLowerCase()))) continue;
-    const tk = tokens(f);
-    if (tk.size < 4) continue;
-    // no repetimos una idea ya contada, aunque esté escrita distinto
-    if (vistos.some((v) => parecido(tk, v) > 0.55)) continue;
-    vistos.push(tk);
-    unicos.push(f);
-  }
+  const material = (umbral: number) => {
+    const vistos: Set<string>[] = [];
+    const out: string[] = [];
+    for (const h of hechos) {
+      const f = limpiar(h);
+      if (f.length < 45 || f.length > 340) continue;
+      if (f.includes("==")) continue;
+      if (META.test(f) || RUIDO.test(f)) continue;
+      const bajo = f.toLowerCase();
+      if (aj.evitar.some((k) => k && bajo.includes(k.toLowerCase()))) continue;
+      const tk = tokens(f);
+      if (tk.size < 4) continue;
+      // no repetimos una idea ya contada, aunque esté escrita distinto
+      if (vistos.some((v) => parecido(tk, v) > umbral)) continue;
+      vistos.push(tk);
+      out.push(f);
+    }
+    return out;
+  };
+  // Si el filtro estricto deja poco material, aflojamos: mejor un relato
+  // completo que uno corto.
+  let unicos = material(0.55);
+  if (unicos.length < 45) unicos = material(0.75);
+  if (unicos.length < 20) unicos = material(0.9);
 
   // --- gancho -------------------------------------------------------
   const fuerte =
