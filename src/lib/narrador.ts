@@ -76,7 +76,11 @@ const DRAMATICAS = [
 ];
 
 const NUMEROSA = /\b\d{2,}(?:[.,]\d+)?\b|\b\d+\s?(?:%|millones|mil)\b/i;
-const ANIO = /\b(1[0-9]{3}|20[0-9]{2})\b/;
+const ANIO =
+  /\b(?:en|el|del|de|hacia|desde|hasta|para|entre|año)\s+(1[0-9]{3}|20[0-9]{2})\b(?!\s*(?:MW|m\b|km|metros|kg|habitantes|millones|dólares|toneladas|personas|kilómetros))/i;
+
+/** Frases que son bibliografía, enlaces o ruido de edición: fuera del relato. */
+const RUIDO = /(https?:\/\/|www\.|Wayback|Archivado el|ISBN|doi:|et al\.|Consultado el|\bpp?\. ?\d|Editorial |ed\.\)|n\.º ?\d+-\d+)/i;
 
 /** Frases que hablan de películas, libros o cultura pop: no son el relato. */
 const META = /\b(pel[ií]cula|filme|film|serie|documental|novela|recaudaci[oó]n|taquilla|actor|actriz|videojuego|canci[oó]n|estreno|reestreno|adaptaci[oó]n)\b/i;
@@ -92,6 +96,7 @@ function fuerza(f: string) {
   if (CAUSALES.test(f)) p += 2;
   if (ANIO.test(f)) p += 1;
   if (META.test(f)) p -= 8;
+  if (RUIDO.test(f)) p -= 10;
   if (f.length > 260) p -= 2;
   if ((f.match(/,/g) || []).length > 5) p -= 2;
   return p;
@@ -237,6 +242,13 @@ export function escribirGuion(
   const objetivo = Math.round(minutos * 140);
   const temaVoz = foneticas(tema);
   const intro = tituloIntro(temaVoz);
+  const nombre = temaVoz.replace(/^(el|la|los|las)\s+/i, "");
+
+  // Semilla estable por tema: dos videos distintos no repiten los mismos
+  // conectores en el mismo orden, pero el mismo tema siempre suena igual.
+  let semilla = 0;
+  for (const c of tema) semilla = (semilla * 31 + c.charCodeAt(0)) % 100000;
+  const elegir = <T,>(arr: T[], i: number) => arr[(semilla + i * 7) % arr.length]!;
 
   // --- material ---------------------------------------------------
   const vistas = new Set<string>();
@@ -247,27 +259,21 @@ export function escribirGuion(
     if (f.includes("==")) continue;
     const clave = f.slice(0, 55).toLowerCase();
     if (vistas.has(clave)) continue;
-    if (META.test(f)) continue;
+    if (META.test(f) || RUIDO.test(f)) continue;
     vistas.add(clave);
     unicos.push(f);
   }
 
-  // --- gancho: los 3 hechos más impactantes van al principio -------
-  // El gancho pide lo mismo que en el Titanic: un dato con peso humano y
-  // un número concreto, dicho corto.
-  const candidatos = unicos.filter(
-    (f) =>
-      f.length < 230 &&
-      !META.test(f) &&
-      NUMEROSA.test(f) &&
-      /\b(muert|muri|víctim|tragedia|desastre|hundi|catástrofe|destruy|sobrevivi|superviv)/i.test(f) &&
-      !/^(los|las|el|la)\s+\w+\s+se\s+consideran/i.test(f),
-  );
-  const porFuerza = (candidatos.length >= 3 ? candidatos : unicos)
-    .slice()
-    .sort((a, b) => fuerza(b) - fuerza(a));
-  const gancho = porFuerza.slice(0, 3);
-  const cuerpo = cronologia(unicos.filter((f) => !gancho.includes(f)));
+  // --- gancho -------------------------------------------------------
+  // Primero buscamos el dato con peso humano y número. Si el tema no tiene
+  // tragedia, servimos igual: buscamos el hecho más fuerte y corto.
+  const fuerte =
+    /\b(muert|muri|víctim|tragedia|desastre|hundi|catástrofe|destruy|sobrevivi|superviv|guerra|prohib|secret|récord|primera vez|nunca antes)/i;
+  const cortos = unicos.filter((f) => f.length < 230 && !META.test(f) && !RUIDO.test(f));
+  const conNumero = cortos.filter((f) => NUMEROSA.test(f) && fuerte.test(f));
+  const conAlgo = cortos.filter((f) => NUMEROSA.test(f) || fuerte.test(f));
+  const pool = conNumero.length >= 2 ? conNumero : conAlgo.length >= 2 ? conAlgo : cortos;
+  const gancho = pool.slice().sort((a, b) => fuerza(b) - fuerza(a)).slice(0, 3);
 
   const esc: Frase[] = [];
   const push = (txt: string, gap?: number) => {
@@ -275,9 +281,14 @@ export function escribirGuion(
     if (t) esc.push({ txt: t, gap: gap ?? pausa(t) });
   };
 
-  gancho.forEach((g, i) => {
-    respirar(g).forEach((p) => push(i === 0 ? p : p, i === 0 ? 0.75 : undefined));
-  });
+  const APERTURAS = [
+    `Hay historias que se cuentan mil veces y siguen sin entenderse. Esta es una de ellas.`,
+    `Todo lo que creés saber sobre esto probablemente sea la mitad de la historia.`,
+    `Esto no fue un accidente del destino. Fue una cadena de decisiones.`,
+    `Para entender lo que pasó, hay que empezar mucho antes de lo que imaginás.`,
+  ];
+  push(elegir(APERTURAS, 1), 0.8);
+  gancho.forEach((g) => respirar(g).forEach((p) => push(p)));
 
   // --- intro fija (regla del proyecto) -----------------------------
   push(intro, 0.95);
@@ -287,30 +298,64 @@ export function escribirGuion(
   );
 
   // --- cuerpo en actos ---------------------------------------------
+  const cuerpo = cronologia(unicos.filter((f) => !gancho.includes(f)));
+
+  const PREGUNTAS = [
+    `Y acá aparece la pregunta que todavía nadie contestó del todo.`,
+    `¿Por qué nadie lo vio venir?`,
+    `¿Se podía evitar? Guardá esa pregunta.`,
+    `¿Y qué pasaba mientras tanto del otro lado?`,
+  ];
+  const ACTOS = [
+    "Primer acto: el origen.",
+    "Segundo acto: la tensión crece.",
+    "Tercer acto: el punto de quiebre.",
+    "Cuarto acto: las consecuencias.",
+    "Último acto: lo que quedó.",
+  ];
+
   let palabras = esc.reduce((n, e) => n + e.txt.split(/\s+/).length, 0);
   let desdePuente = 0;
   let puenteIdx = 0;
   let enfasisIdx = 0;
   let bloque = 0;
+  let actoIdx = 0;
+  let ultimoAnio: number | null = null;
 
   for (const f of cuerpo) {
     if (palabras >= objetivo) break;
 
-    // cada ~6 frases, un conector de tensión
     if (desdePuente >= 6) {
-      const usarCierre = bloque > 0 && bloque % 3 === 0;
-      const linea = usarCierre
-        ? CIERRES_ACTO[(bloque / 3 - 1) % CIERRES_ACTO.length]!
-        : PUENTES[puenteIdx++ % PUENTES.length]!;
+      let linea: string;
+      if (bloque > 0 && bloque % 4 === 0 && actoIdx < ACTOS.length) {
+        linea = ACTOS[actoIdx++]!;
+      } else if (bloque > 0 && bloque % 3 === 0) {
+        linea = CIERRES_ACTO[(bloque / 3 - 1) % CIERRES_ACTO.length]!;
+      } else if (bloque % 5 === 2) {
+        linea = elegir(PREGUNTAS, bloque);
+      } else {
+        linea = PUENTES[puenteIdx++ % PUENTES.length]!;
+      }
       push(linea, 0.85);
       palabras += linea.split(/\s+/).length;
       desdePuente = 0;
       bloque++;
     }
 
-    // los datos muy fuertes se anuncian antes de decirlos
-    if (fuerza(f) >= 5 && enfasisIdx < 6 && desdePuente > 1) {
-      const e = ENFASIS[enfasisIdx++ % ENFASIS.length]!;
+    // Marcamos el salto de época: ayuda a seguir la cronología escuchando.
+    const m = ANIO.exec(f);
+    const a = m ? Number(m[1]) : null;
+    if (a && (ultimoAnio === null || a - ultimoAnio >= 8)) {
+      const salto = `Año ${a}.`;
+      push(salto, 0.6);
+      palabras += 2;
+      ultimoAnio = a;
+    } else if (a && a > (ultimoAnio ?? 0)) {
+      ultimoAnio = a;
+    }
+
+    if (fuerza(f) >= 5 && enfasisIdx < 8 && desdePuente > 1) {
+      const e = elegir(ENFASIS, enfasisIdx++);
       push(e, 0.55);
       palabras += e.split(/\s+/).length;
     }
@@ -325,7 +370,7 @@ export function escribirGuion(
   // --- cierre -------------------------------------------------------
   push("Y así termina esta historia.", 0.8);
   push(
-    "Lo que pasó ya no se puede cambiar, pero sí se puede entender. Y por eso se sigue contando.",
+    `Lo que pasó con ${nombre} ya no se puede cambiar, pero sí se puede entender. Y por eso se sigue contando.`,
     0.9,
   );
   push("Gracias por acompañarme hasta el final.", 1);
@@ -338,3 +383,4 @@ export function escribirGuion(
     minutos: Math.round((total / 140) * 10) / 10,
   };
 }
+
