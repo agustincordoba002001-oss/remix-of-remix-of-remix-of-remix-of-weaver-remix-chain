@@ -1,22 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type { Referencia } from "@/lib/referencias";
 
 const DIR = "/mnt/documents/referencias";
 const REG = path.join(DIR, "registro.json");
 
-export type Referencia = {
-  id: string;
-  nombre: string;
-  tipo: string;
-  bytes: number;
-  fecha: string;
-  /** El agente puede abrirlo y estudiarlo. */
-  activo: boolean;
-  /** El estilo de este material queda guardado para siempre. */
-  permanente: boolean;
-  notas: string;
-};
+export type { Referencia };
+
 
 async function leerRegistro(): Promise<Referencia[]> {
   try {
